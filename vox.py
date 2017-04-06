@@ -1,13 +1,11 @@
 import pandas as pd
 import numpy as np
+import re
 import nltk
 import string
 from nltk.corpus import stopwords
-
+from nltk.stem.snowball import SnowballStemmer
 stopwords = set(stopwords.words('english'))
-from string import punctuation
-import sklearn
-
 
 class Vox(object):
     def __init__(self):
@@ -24,10 +22,21 @@ class Vox(object):
         vox['id'] = vox._id.apply(lambda x: x['$oid'])
         vox.drop('_id', axis=1, inplace=True)
         trans = str.maketrans('', '', string.punctuation + '0123456789')
-        vox.text = vox.text.apply(
-            lambda x: list(filter(lambda w: w not in stopwords, nltk.word_tokenize(x.lower().translate(trans)))))
-        vox.text = vox.text.apply(lambda x: list(filter(lambda y: len(y) > 2, x)))
-        vox.text = vox.text.apply(lambda x: list(map(lambda y: y.encode('ascii', 'ignore'), x)))
+        stemmer = SnowballStemmer('english')
+
+        def filter_func(document):
+            result = []
+            wordlist = nltk.word_tokenize(document.lower().translate(trans))
+            for word in wordlist:
+                c1 = word not in stopwords
+                c2 = len(word) > 2
+                c3 = not word.startswith('https')
+                c4 = not re.match('document[a-z]+', word)
+                if c1 and c2 and c3 and c4:
+                    result.append(stemmer.stem(word.encode('ascii', 'ignore').decode('UTF-8')))
+            return result
+
+        vox.text = vox.text.apply(lambda x: filter_func(x))
         vox_date = vox.date.apply(
             lambda x: x[:-1] + 'AM' if x.endswith('a') else x[:-1] + 'PM' if x.endswith('p') else x)
         vox_date = vox_date.apply(lambda x: x[:12] if x.endswith('M') else x)
