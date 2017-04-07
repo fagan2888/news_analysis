@@ -4,6 +4,7 @@ import re
 import nltk
 import json
 import string
+import time
 from nltk.corpus import stopwords
 from nltk.stem.snowball import SnowballStemmer
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
@@ -15,13 +16,32 @@ from sklearn.naive_bayes import GaussianNB
 stopwords = set(stopwords.words('english'))
 
 
+def print_time_status(message, start):
+    elapsed = int(round(time.time() - start))
+    hours = int(elapsed / 3600)
+    minutes = int((elapsed % 3600) / 60)
+    seconds = int((elapsed % 3600) % 60)
+    print(message + ' {0}H {1}M {2}S'.format(hours, minutes, seconds))
+
+
 class NewsAnalysis(object):
     def __init__(self, voxfile, jezebelfile):
+        print('Reading Data...')
+        start = time.time()
         vox, jezebel = self.read(voxfile, jezebelfile)
+        print_time_status('Reading Data complete', start)
+        print('Cleaning Data...')
         corpus = self.clean(vox, jezebel)
+        print_time_status('Cleaning Data Complete', start)
+        print('Computing LDA')
         corpus, topic_word_assoc = self.lda(corpus)
+        print_time_status('LDA Computation Complete', start)
+        print('Computing Latent Semantic Analysis Vectors...')
         corpus = self.lsa3d(corpus)
+        print_time_status('LSA Computation Completed', start)
+        print('Computing Naive Bayes...')
         corpus = self.naive_bayes(corpus)
+        print_time_status('Naive Bays ComputationComplete', start)
         self.write(corpus, topic_word_assoc)
 
     @staticmethod
@@ -51,6 +71,7 @@ class NewsAnalysis(object):
                 if c1 and c2 and c3 and c4:
                     result.append(stemmer.stem(word.encode('ascii', 'ignore').decode('UTF-8')))
             return result
+
         vox.text = vox.text.apply(lambda x: filter_func(x))
         jezebel.text = jezebel.text.apply(lambda x: filter_func(x))
 
@@ -78,7 +99,7 @@ class NewsAnalysis(object):
     def lda(corpus):
         pipeline = Pipeline([
             ('tf', CountVectorizer()),
-            ('lda', LatentDirichletAllocation(learning_method='online', max_iter=70, n_topics=30))
+            ('lda', LatentDirichletAllocation(learning_method='online', max_iter=30, n_topics=30, n_jobs=-1))
         ])
 
         parameters = {}
@@ -95,7 +116,7 @@ class NewsAnalysis(object):
         tf_feature_names = gs.best_estimator_.steps[0][1].get_feature_names()
         lda = gs.best_estimator_.steps[1][1]
         get_top_words(lda, tf_feature_names, 10)
-        topic_matrix = gs.transform(corpus.text.apply(lambda x: ' '.join(x)))
+        topic_matrix = np.round(gs.transform(corpus.text.apply(lambda x: ' '.join(x))), 5)
         topic_df = pd.DataFrame(topic_matrix)
         topic_df.columns = ['topic' + str(t) for t in topic_df.columns]
         topic_df['max_category'] = topic_df.apply(lambda x: x.index[x == np.max(x)][0], axis=1)
@@ -110,7 +131,7 @@ class NewsAnalysis(object):
         tfidf = TfidfVectorizer()
         tsvd = TruncatedSVD(n_components=3, n_iter=40)
         tfs = tfidf.fit_transform(corpus.text.apply(lambda x: ' '.join(x)))
-        lsa = tsvd.fit_transform(tfs)
+        lsa = np.round(tsvd.fit_transform(tfs), 3)
         lsadf = pd.DataFrame(lsa)
         corpus_columns = corpus.columns
         lsadf_columns = ['lsa_component0', 'lsa_component1', 'lsa_component2']
@@ -139,7 +160,7 @@ class NewsAnalysis(object):
         with open('./topic_words.json', 'w') as f:
             f.write(json.dumps(topic_words))
             f.close()
-        print('All done.')
+        print('Output Written')
 
 
 if __name__ == '__main__':

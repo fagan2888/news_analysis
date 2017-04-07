@@ -1,0 +1,141 @@
+---
+Resources:
+  GpuSpotInstance:
+    Type: "AWS::EC2::SpotFleet"
+    Properties:
+      SpotFleetRequestConfigData:
+        IamFleetRole: !GetAtt [SpotfleetRole, Arn]
+        SpotPrice: .3
+        TargetCapacity: 1
+        LaunchSpecifications:
+          - InstanceType: c4.4xlarge
+            ImageId: ami-f4cc1de2
+            KeyName: selfie-art-us-east
+            IamInstanceProfile:
+              Arn: !GetAtt [InstanceProfile, Arn]
+            BlockDeviceMappings:
+              - DeviceName: /dev/sda1
+                Ebs:
+                  VolumeSize: 50
+            NetworkInterfaces:
+              - AssociatePublicIpAddress: true
+                DeviceIndex: 0
+                DeleteOnTermination: true
+                SubnetId: !Ref PublicSubnet
+                Groups:
+                  - !Ref PublicSecGroup
+  SpotfleetRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - spotfleet.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: EC2PowerUser
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ec2:*
+                Resource: "*"
+        - PolicyName: GenericIamUser
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - iam:PassRole
+                  - iam:ListRoles
+                  - iam:ListInstanceProfiles
+                Resource: "*"
+  InstanceProfile:
+    Type: "AWS::IAM::InstanceProfile"
+    Properties:
+      Roles:
+        - !Ref InstanceRole
+  InstanceRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: S3Access
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:*
+                Resource:
+                  - "arn:aws:s3:::warren-datasets"
+                  - "arn:aws:s3:::warren-datasets/*"
+  Vpc:
+    Type: "AWS::EC2::VPC"
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+  PublicSubnet:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      VpcId:
+        Ref: Vpc
+      AvailabilityZone: us-east-1a
+      CidrBlock: 10.0.0.0/24
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+  GatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId:
+        Ref: Vpc
+      InternetGatewayId:
+        Ref: InternetGateway
+  RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: Vpc
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: GatewayAttachment
+    Properties:
+      RouteTableId:
+        Ref: RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId:
+        Ref: InternetGateway
+  RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: PublicSubnet
+      RouteTableId:
+        Ref: RouteTable
+  AclAssociation:
+    Type: AWS::EC2::SubnetNetworkAclAssociation
+    Properties:
+      SubnetId:
+        Ref: PublicSubnet
+      NetworkAclId:
+        Fn::GetAtt: [Vpc, DefaultNetworkAcl]
+  PublicSecGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "Enable HTTP ingress"
+      VpcId:
+        Ref: Vpc
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 0
+          ToPort: 8000
+          CidrIp: 0.0.0.0/0
