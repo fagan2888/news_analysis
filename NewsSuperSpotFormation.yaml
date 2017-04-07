@@ -13,6 +13,23 @@ Resources:
             KeyName: selfie-art-us-east
             IamInstanceProfile:
               Arn: !GetAtt [InstanceProfile, Arn]
+            UserData:
+              Fn::Base64:
+                Fn::Join:
+                - ""
+                - - "#!/usr/bin/env bash\n"
+                  - "sudo apt-get update\n"
+                  - "sudo apt-get upgrade -y\n"
+                  - "sudo apt-get install -y build-essential python-pip awscli libfreetype6-dev libxft-dev libncurses-dev libopenblas-dev gfortran libblas-dev liblapack-dev libatlas-base-dev python-dev linux-headers-generic linux-image-extra-virtual unzip swig unzip wget zip g++ zlib1g-dev\n"
+                  - "sudo apt-get -y install python3-pip\n"
+                  - "pip3 install numpy pandas scikit-learn scipy nltk\n"
+                  - "python3 -m nltk.downloader all\n"
+                  - "mkdir ./data\n"
+                  - "aws s3 cp s3://warren-datasets/jezebel.jsonl ./data\n"
+                  - "aws s3 cp s3://warren-datasets/jezebeltest.jsonl ./data\n"
+                  - "aws s3 cp s3://warren-datasets/vox.jsonl ./data\n"
+                  - "aws s3 cp s3://warren-datasets/voxtest.jsonl ./data\n"
+                  - "aws s3 cp s3://warren-datasets/news_analysis.py .\n"
             BlockDeviceMappings:
               - DeviceName: /dev/sda1
                 Ebs:
