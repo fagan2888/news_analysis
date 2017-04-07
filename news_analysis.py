@@ -2,13 +2,15 @@ import pandas as pd
 import numpy as np
 import re
 import nltk
+import json
 import string
 from nltk.corpus import stopwords
 from nltk.stem.snowball import SnowballStemmer
-from sklearn.feature_extraction.text import CountVectorizer
-from sklearn.decomposition import LatentDirichletAllocation
+from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
+from sklearn.decomposition import LatentDirichletAllocation, TruncatedSVD
 from sklearn.pipeline import Pipeline
 from sklearn.model_selection import GridSearchCV
+from sklearn.naive_bayes import GaussianNB
 
 stopwords = set(stopwords.words('english'))
 
@@ -18,6 +20,8 @@ class NewsAnalysis(object):
         vox, jezebel = self.read(voxfile, jezebelfile)
         corpus = self.clean(vox, jezebel)
         corpus, topic_word_assoc = self.lda(corpus)
+        corpus = self.lsa3d(corpus)
+        corpus = self.naive_bayes(corpus)
         self.corpus = corpus
         self.topic_word_assoc = topic_word_assoc
 
@@ -66,19 +70,19 @@ class NewsAnalysis(object):
 
         vox['org'] = 'vox'
         jezebel['org'] = 'jezebel'
+        corpus = pd.concat([vox, jezebel], ignore_index=True)
+        corpus.columns = vox.columns
 
-        return pd.concat([vox, jezebel], ignore_index=True)
+        return corpus
 
     @staticmethod
     def lda(corpus):
         pipeline = Pipeline([
             ('tf', CountVectorizer()),
-            ('lda', LatentDirichletAllocation(learning_method='online', max_iter=30))
+            ('lda', LatentDirichletAllocation(learning_method='online', max_iter=40, n_topics=20))
         ])
 
-        parameters = {
-            'lda__n_topics': range(5, 15)
-        }
+        parameters = {}
 
         gs = GridSearchCV(pipeline, parameters)
         gs.fit(corpus.text.apply(lambda x: ' '.join(x)))
@@ -99,8 +103,42 @@ class NewsAnalysis(object):
         corpus = pd.concat([corpus, topic_df], ignore_index=True, axis=1)
         return corpus, topic_word_assoc
 
+    @staticmethod
+    def lsa3d(corpus):
+        tfidf = TfidfVectorizer()
+        tsvd = TruncatedSVD(n_components=3, n_iter=40)
+        tfs = tfidf.fit_transform(corpus.text.apply(lambda x: ' '.join(x)))
+        lsa = tsvd.fit_transform(tfs)
+        lsadf = pd.DataFrame(lsa)
+        corpus_columns = corpus.columns
+        lsadf_columns = ['lsa_component0', 'lsa_component1', 'lsa_component2']
+        corpus = pd.concat([corpus, lsadf], ignore_index=True, axis=1)
+        corpus.columns = corpus_columns + lsadf_columns
+        return corpus
+
+    @staticmethod
+    def naive_bayes(corpus):
+        tfidf = TfidfVectorizer()
+        tsvd = TruncatedSVD(n_components=900, n_iter=100)
+        tfs = tfidf.fit_transform(corpus.text.apply(lambda x: ' '.join(x)))
+        lsa = tsvd.fit_transform(tfs)
+        clf = GaussianNB()
+        clf.fit(lsa, corpus['org'])
+        probs = np.round(pd.DataFrame(clf.predict_proba(lsa)), 3)
+        columns = corpus.columns + ['naive_bayes_' + clf.classes_[0], 'naive_bayes_' + clf.classes_[1]]
+        corpus = pd.concat([corpus, probs], ignore_index=True, axis=1)
+        corpus.columns = columns
+        return corpus
+
+    @staticmethod
+    def write(corpus, topic_words):
+        corpus.drop(['text', 'naive_bayes_jezebel'], axis=1, inplace=True)
+        corpus.to_csv('./news_data.csv', index=False)
+        with open('./topic_words.json', 'rw') as f:
+            f.write(json.dumps(topic_words))
+            f.close()
+        print('All done.')
+
 
 if __name__ == '__main__':
     na = NewsAnalysis('voxtest.jsonl', 'jezebeltest.jsonl')
-    print(na.corpus.head())
-    print(na.topic_word_assoc)
