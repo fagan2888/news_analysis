@@ -22,8 +22,7 @@ class NewsAnalysis(object):
         corpus, topic_word_assoc = self.lda(corpus)
         corpus = self.lsa3d(corpus)
         corpus = self.naive_bayes(corpus)
-        self.corpus = corpus
-        self.topic_word_assoc = topic_word_assoc
+        self.write(corpus, topic_word_assoc)
 
     @staticmethod
     def read(voxfile, jezebelfile):
@@ -79,7 +78,7 @@ class NewsAnalysis(object):
     def lda(corpus):
         pipeline = Pipeline([
             ('tf', CountVectorizer()),
-            ('lda', LatentDirichletAllocation(learning_method='online', max_iter=40, n_topics=20))
+            ('lda', LatentDirichletAllocation(learning_method='online', max_iter=70, n_topics=30))
         ])
 
         parameters = {}
@@ -100,7 +99,10 @@ class NewsAnalysis(object):
         topic_df = pd.DataFrame(topic_matrix)
         topic_df.columns = ['topic' + str(t) for t in topic_df.columns]
         topic_df['max_category'] = topic_df.apply(lambda x: x.index[x == np.max(x)][0], axis=1)
+        topic_columns = topic_df.columns
+        corpus_columns = corpus.columns
         corpus = pd.concat([corpus, topic_df], ignore_index=True, axis=1)
+        corpus.columns = list(corpus_columns) + list(topic_columns)
         return corpus, topic_word_assoc
 
     @staticmethod
@@ -113,7 +115,7 @@ class NewsAnalysis(object):
         corpus_columns = corpus.columns
         lsadf_columns = ['lsa_component0', 'lsa_component1', 'lsa_component2']
         corpus = pd.concat([corpus, lsadf], ignore_index=True, axis=1)
-        corpus.columns = corpus_columns + lsadf_columns
+        corpus.columns = list(corpus_columns) + lsadf_columns
         return corpus
 
     @staticmethod
@@ -125,7 +127,7 @@ class NewsAnalysis(object):
         clf = GaussianNB()
         clf.fit(lsa, corpus['org'])
         probs = np.round(pd.DataFrame(clf.predict_proba(lsa)), 3)
-        columns = corpus.columns + ['naive_bayes_' + clf.classes_[0], 'naive_bayes_' + clf.classes_[1]]
+        columns = list(corpus.columns) + ['naive_bayes_' + clf.classes_[0], 'naive_bayes_' + clf.classes_[1]]
         corpus = pd.concat([corpus, probs], ignore_index=True, axis=1)
         corpus.columns = columns
         return corpus
@@ -134,11 +136,11 @@ class NewsAnalysis(object):
     def write(corpus, topic_words):
         corpus.drop(['text', 'naive_bayes_jezebel'], axis=1, inplace=True)
         corpus.to_csv('./news_data.csv', index=False)
-        with open('./topic_words.json', 'rw') as f:
+        with open('./topic_words.json', 'w') as f:
             f.write(json.dumps(topic_words))
             f.close()
         print('All done.')
 
 
 if __name__ == '__main__':
-    na = NewsAnalysis('voxtest.jsonl', 'jezebeltest.jsonl')
+    na = NewsAnalysis('vox.jsonl', 'jezebel.jsonl')
