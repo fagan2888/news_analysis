@@ -59,4 +59,5 @@ crashlytics-build.properties
 fabric.properties
 
 news_packages
-data
+data/jezebel*
+data/vox*
