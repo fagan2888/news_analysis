@@ -29,10 +29,15 @@ Resources:
                   - "aws s3 cp s3://warren-datasets/vox.jsonl /home/ubuntu/data\n"
                   - "aws s3 cp s3://warren-datasets/voxtest.jsonl /home/ubuntu/data\n"
                   - "aws s3 cp s3://warren-datasets/news_analysis.py /home/ubuntu\n"
+                  - "sudo python3 -m nltk.downloader all \n"
                   - "sudo apt-get -y install nfs-common \n"
-                  - "echo 'mount-target-DNS:/ /dev/shm "
+                  - "echo '"
                   - Ref: EFS
-                  - " nfs4 nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2 0 0' >> /etc/fstab \n"
+                  - ".efs.us-east-1.amazonaws.com:/ /dev/shm nfs4 nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2 0 0' >> /etc/fstab \n"
+                  - "sudo chmod go+rw /dev/shm \n"
+                  - "sudo echo '#!/bin/sh -e' > /etc/rc.local"
+                  - "sudo echo 'mount -a -t nfs4' >> /etc/rc.local"
+                  - "sudo echo 'exit 0' >> /etc/rc.local"
                   - "sudo reboot"
             BlockDeviceMappings:
               - DeviceName: /dev/sda1
@@ -99,6 +104,9 @@ Resources:
                 Resource:
                   - "arn:aws:s3:::warren-datasets"
                   - "arn:aws:s3:::warren-datasets/*"
+              - Effect: Allow
+                Action:
+                  - efs
   Vpc:
     Type: "AWS::EC2::VPC"
     Properties:

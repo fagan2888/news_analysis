@@ -99,7 +99,7 @@ class NewsAnalysis(object):
     def lda(corpus):
         pipeline = Pipeline([
             ('tf', CountVectorizer()),
-            ('lda', LatentDirichletAllocation(learning_method='online', max_iter=30, n_topics=27))
+            ('lda', LatentDirichletAllocation(learning_method='online', max_iter=30, n_topics=27, n_jobs=-1))
         ])
 
         parameters = {}
