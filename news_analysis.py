@@ -8,12 +8,14 @@ import time
 from nltk.corpus import stopwords
 from nltk.stem.snowball import SnowballStemmer
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
-from sklearn.decomposition import LatentDirichletAllocation, TruncatedSVD
+from sklearn.decomposition import LatentDirichletAllocation, TruncatedSVD, PCA
 from sklearn.pipeline import Pipeline
 from sklearn.model_selection import GridSearchCV
 from sklearn.naive_bayes import GaussianNB
 
-stopwords = set(stopwords.words('english'))
+stopwords = list(stopwords.words('english'))
+stopwords = stopwords + ['one', 'like', 'use', 'much', 'make', 'even', 'much']
+stopwords = set(stopwords)
 
 
 def print_time_status(message, start):
@@ -48,7 +50,7 @@ class NewsAnalysis(object):
     def read(voxfile, jezebelfile):
         vox = pd.read_json('./data/' + voxfile, lines=True)
         jezebel = pd.read_json('./data/' + jezebelfile, lines=True)
-        return vox, jezebel
+        return vox, jezebel.sample(20408)
 
     @staticmethod
     def clean(vox, jezebel):
@@ -99,7 +101,7 @@ class NewsAnalysis(object):
     def lda(corpus):
         pipeline = Pipeline([
             ('tf', CountVectorizer()),
-            ('lda', LatentDirichletAllocation(learning_method='online', max_iter=30, n_topics=27, n_jobs=-1))
+            ('lda', LatentDirichletAllocation(learning_method='online', max_iter=30, n_topics=26, n_jobs=36))
         ])
 
         parameters = {}
@@ -117,13 +119,21 @@ class NewsAnalysis(object):
         lda = gs.best_estimator_.steps[1][1]
         get_top_words(lda, tf_feature_names, 10)
         topic_matrix = np.round(gs.transform(corpus.text.apply(lambda x: ' '.join(x))), 5)
+
+        pca = PCA(n_components=3)
+        pca_df = pd.DataFrame(pca.fit_transform(topic_matrix))
+        pca_columns = ['topic_pca' + str(t) for t in pca_df.columns]
+
         topic_df = pd.DataFrame(topic_matrix)
         topic_df.columns = ['topic' + str(t) for t in topic_df.columns]
-        topic_df['max_category'] = topic_df.apply(lambda x: x.index[x == np.max(x)][0], axis=1)
+        max_category_value = topic_df.apply(lambda x: x[x == np.max(x)][0], axis=1)
+        max_category = topic_df.apply(lambda x: x.index[x == np.max(x)][0], axis=1)
+        topic_df['max_category_value'] = max_category_value
+        topic_df['max_category'] = max_category
         topic_columns = topic_df.columns
         corpus_columns = corpus.columns
-        corpus = pd.concat([corpus, topic_df], ignore_index=True, axis=1)
-        corpus.columns = list(corpus_columns) + list(topic_columns)
+        corpus = pd.concat([corpus, topic_df, pca_df], ignore_index=True, axis=1)
+        corpus.columns = list(corpus_columns) + list(topic_columns) + pca_columns
         return corpus, topic_word_assoc
 
     @staticmethod
@@ -142,7 +152,7 @@ class NewsAnalysis(object):
     @staticmethod
     def naive_bayes(corpus):
         tfidf = TfidfVectorizer()
-        tsvd = TruncatedSVD(n_components=900, n_iter=100)
+        tsvd = TruncatedSVD(n_components=800, n_iter=100)
         tfs = tfidf.fit_transform(corpus.text.apply(lambda x: ' '.join(x)))
         lsa = tsvd.fit_transform(tfs)
         clf = GaussianNB()

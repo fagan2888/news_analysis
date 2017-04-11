@@ -61,3 +61,4 @@ fabric.properties
 news_packages
 data/jezebel*
 data/vox*
+data/news_data_sample.json
